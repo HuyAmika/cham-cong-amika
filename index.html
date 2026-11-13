@@ -219,6 +219,13 @@
       <div id="tqThem" class="trong"></div>
     </div>
 
+    <!-- ĐỘI HÔM NAY (quản lý) -->
+    <div class="the an" id="theDoiHomNay">
+      <h3>👥 Đội hôm nay</h3>
+      <div class="o4" id="dhnO"></div>
+      <div id="dhnDs"></div>
+    </div>
+
     <!-- CẢM XÚC ĐỘI (quản lý) -->
     <div class="the an" id="theDoi">
       <h3>💙 Cảm xúc đội hôm nay</h3>
@@ -226,7 +233,7 @@
     </div>
 
     <div class="menu2">
-      <button class="phu2" onclick="moNghi()">📅 Xin nghỉ</button>
+      <button class="phu2" id="nutXinNghi" onclick="moNghi()">📅 Xin nghỉ</button>
       <button class="phu2 an" id="nutDuyet" onclick="moDuyet()">✅ Duyệt đơn</button>
     </div>
   </section>
@@ -490,11 +497,16 @@ function veChinh() {
   $('nutRaVe').classList.toggle('an', !(hn && !hn.gioVe));
   capNhatXinMuon();
   $('formXinMuon').classList.add('an');
-  if (!hn) batCamera(); else dungCamera();
-  var canViTri = !hn || !hn.gioVe;
+  if (!hn && !TC.quanLy) batCamera(); else dungCamera();
+  var canViTri = !TC.quanLy && (!hn || !hn.gioVe);
   $('dongViTri').classList.toggle('an', !canViTri);
   if (canViTri) theoDoiViTri(); else dungViTri();
-  veCamXuc(); veTongQuan(); veDoi();
+  veCamXuc(); veTongQuan(); veDoi(); veDoiHomNay();
+  if (TC.quanLy) { // quản lý chỉ duyệt + theo dõi đội, không chấm công
+    ['khungChup', 'khungXinMuon', 'nutRaVe', 'dongViTri', 'theCamXuc', 'theTongQuan', 'nutXinNghi'].forEach(function (id) { $(id).classList.add('an'); });
+    $('hopHomNay').innerHTML = '';
+    dungCamera(); dungViTri();
+  } else $('nutXinNghi').classList.remove('an');
   // quản lý
   $('nutDuyet').classList.toggle('an', !TC.quanLy);
   var n = TC.quanLy ? TC.choDuyet.length : 0;
@@ -541,6 +553,18 @@ function chonCamXuc(c) {
     .catch(function (e) { TC.camXucHomNay = cu; veCamXuc(); baoLoi('loiCham', e.message); });
 }
 
+function veDoiHomNay() {
+  var d = TC.doiHomNay;
+  $('theDoiHomNay').classList.toggle('an', !(TC.quanLy && d));
+  if (!(TC.quanLy && d)) return;
+  function o(nhan, so, lop) { return '<div class="' + (lop || '') + '"><small>' + nhan + '</small><b>' + so + '</b></div>'; }
+  $('dhnO').innerHTML = o('✅ Đã chấm công', d.daCham + ' <i>/ ' + d.tong + '</i>', 'tot2') + o('⏰ Đi muộn', d.muon.length, d.muon.length ? 'canh' : '') +
+    o('🙏 Muộn có phép', d.coPhep.length) + o('📅 Nghỉ có duyệt', d.nghi.length);
+  function ds(tieuDe, mang, lop) { return mang.length ? '<div class="hop ' + lop + '"><b>' + tieuDe + ':</b> ' + mang.map(esc).join(', ') + '</div>' : ''; }
+  $('dhnDs').innerHTML = ds('Đi muộn', d.muon, 'cam') + ds('Muộn có phép', d.coPhep, 'xanh') + ds('Nghỉ', d.nghi, 'xanh') +
+    ds('Chưa chấm công', d.chuaCham, 'cam') + (d.daCham ? '<div class="trong">🏠 Đã bấm ra về: ' + d.daVe + '/' + d.daCham + '</div>' : '');
+}
+
 function veDoi() {
   var d = TC.camXucDoi;
   $('theDoi').classList.toggle('an', !(TC.quanLy && d));
@@ -554,7 +578,7 @@ function veDoi() {
 function capNhatXinMuon() {
   if (!TC) return;
   var x = TC.xinMuon, conGio = gioVN(bayGio()).slice(0, 5) < x.han;
-  var hien1 = x.coThe && conGio && !TC.homNay;
+  var hien1 = x.coThe && conGio && !TC.homNay && !TC.quanLy;
   $('khungXinMuon').classList.toggle('an', !hien1);
   $('nutXinMuon').textContent = '🙏 Xin phép đi muộn (còn ' + (x.toiDa - x.soLan) + '/' + x.toiDa + ' lần tháng này, trước ' + x.han + ')';
 }
