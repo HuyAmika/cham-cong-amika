@@ -86,6 +86,19 @@
   .tt-cho { background:#fff3bf; color:#7a5500; } .tt-duyet { background:#d9f2d9; color:#16632c; } .tt-tuchoi { background:#fadbd8; color:#9b1c1c; } .tt-huy { background:#eceff3; color:#667085; }
   .don .mo { color:var(--mo); font-size:14px; }
   .trong { color:var(--mo); font-size:14px; padding:6px 0; }
+  .o4 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .o4 > div { background:#eef3fa; border-radius:12px; padding:12px; }
+  .o4 small { display:block; color:var(--mo); font-size:13px; font-weight:600; }
+  .o4 b { display:block; font-size:28px; color:var(--xanh); margin-top:2px; }
+  .o4 b i { font-style:normal; font-size:15px; color:var(--mo); font-weight:600; }
+  .o4 .canh { background:#fff4e5; } .o4 .canh b { color:var(--cam); }
+  .o4 .tot2 { background:#e7f6ec; } .o4 .tot2 b { color:var(--xl); }
+  .cx { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+  .cx button { margin:0; padding:10px 2px; background:#f5f7fb; color:var(--chu); font-size:12px; font-weight:600; border:2px solid transparent; border-radius:12px; line-height:1.25; }
+  .cx button span { display:block; font-size:28px; margin-bottom:4px; }
+  .cx button.chon { border-color:var(--xanh2); background:#eaf1fd; color:var(--xanh); }
+  .doi-dem { display:flex; justify-content:space-between; text-align:center; margin-bottom:8px; }
+  .doi-dem div { flex:1; font-size:12px; color:var(--mo); } .doi-dem b { display:block; font-size:22px; color:var(--chu); }
 </style>
 </head>
 <body>
@@ -190,6 +203,26 @@
       <!-- Ra về -->
       <button class="cam an" id="nutRaVe" onclick="bamRaVe()">🏠 Ra về</button>
       <div id="loiCham" class="loi an"></div>
+    </div>
+
+    <!-- CẢM XÚC HÔM NAY -->
+    <div class="the" id="theCamXuc">
+      <h3>Cảm xúc hôm nay của bạn thế nào?</h3>
+      <div class="cx" id="cxNut"></div>
+      <div id="cxCamOn" class="trong" style="margin-top:10px"></div>
+    </div>
+
+    <!-- TỔNG QUAN THÁNG -->
+    <div class="the" id="theTongQuan">
+      <h3 id="tqTieuDe">📊 Tháng này của bạn</h3>
+      <div class="o4" id="tqO"></div>
+      <div id="tqThem" class="trong"></div>
+    </div>
+
+    <!-- CẢM XÚC ĐỘI (quản lý) -->
+    <div class="the an" id="theDoi">
+      <h3>💙 Cảm xúc đội hôm nay</h3>
+      <div id="doiCx"></div>
     </div>
 
     <div class="menu2">
@@ -461,12 +494,61 @@ function veChinh() {
   var canViTri = !hn || !hn.gioVe;
   $('dongViTri').classList.toggle('an', !canViTri);
   if (canViTri) theoDoiViTri(); else dungViTri();
+  veCamXuc(); veTongQuan(); veDoi();
   // quản lý
   $('nutDuyet').classList.toggle('an', !TC.quanLy);
   var n = TC.quanLy ? TC.choDuyet.length : 0;
   $('nutDuyet').textContent = '✅ Duyệt đơn' + (n ? ' (' + n + ')' : '');
   $('chuong').classList.toggle('an', !n);
   $('chuong').textContent = '🔔 Có ' + n + ' đơn xin nghỉ đang chờ anh duyệt — bấm để xem';
+}
+
+/* ---------- BẢNG TỔNG QUAN + CẢM XÚC ---------- */
+var EMO = { 'Đầy năng lượng': '⚡', 'Vui': '😊', 'Bình thường': '😐', 'Ốm': '🤒', 'Chán nản': '😞' };
+function tien(n) { return Number(n || 0).toLocaleString('vi-VN') + 'đ'; }
+
+function veTongQuan() {
+  var t = TC.thongKe;
+  if (!t) { $('theTongQuan').classList.add('an'); return; }
+  $('theTongQuan').classList.remove('an');
+  $('tqTieuDe').textContent = '📊 Tháng ' + t.thang + ' của bạn';
+  function o(nhan, so, lop) { return '<div class="' + (lop || '') + '"><small>' + nhan + '</small><b>' + so + '</b></div>'; }
+  $('tqO').innerHTML =
+    o('📅 Tổng số ngày đi làm', t.cong + ' <i>/ ' + t.ngayQuyDinh + '</i>') +
+    o('⏰ Số ngày đi muộn', t.muon, t.muon ? 'canh' : 'tot2') +
+    o('🙏 Muộn có xin phép', t.muonCoPhep + ' <i>lần</i>') +
+    o('💛 Đã góp quỹ', tien(t.tien), t.tien ? 'canh' : '');
+  var x = TC.xinMuon;
+  $('tqThem').innerHTML = (t.nghiPhep ? '📅 Nghỉ có duyệt: <b>' + t.nghiPhep + '</b> ngày · ' : '') +
+    'Còn <b>' + Math.max(0, x.toiDa - x.soLan) + '/' + x.toiDa + '</b> lần xin phép đi muộn tháng này';
+}
+
+function veCamXuc() {
+  var chon = TC.camXucHomNay;
+  $('cxNut').innerHTML = (TC.dsCamXuc || Object.keys(EMO)).map(function (c) {
+    return '<button class="' + (c === chon ? 'chon' : '') + '" onclick="chonCamXuc(\'' + c + '\')"><span>' + (EMO[c] || '🙂') + '</span>' + esc(c) + '</button>';
+  }).join('');
+  var loi = { 'Đầy năng lượng': 'Tuyệt vời! Chúc bạn một ngày làm việc bùng nổ ⚡', 'Vui': 'Vui quá! Lan toả niềm vui cho cả xưởng nhé 😊',
+    'Bình thường': 'Cảm ơn bạn đã chia sẻ. Chúc bạn một ngày làm việc suôn sẻ!', 'Ốm': 'Mong bạn mau khoẻ! Nếu mệt quá, hãy bấm "📅 Xin nghỉ" hoặc báo quản lý nhé.',
+    'Chán nản': 'Cảm ơn bạn đã chia sẻ thật lòng 💙 Nếu muốn nói chuyện, quản lý luôn sẵn sàng lắng nghe.' };
+  $('cxCamOn').textContent = chon ? loi[chon] || '' : 'Chạm vào một biểu tượng — chỉ mất 1 giây.';
+}
+
+function chonCamXuc(c) {
+  var cu = TC.camXucHomNay;
+  TC.camXucHomNay = c; veCamXuc();
+  goi('ghiCamXuc', gop(giayTo(), { camXuc: c })).then(function () { if (TC.quanLy) taiTrangChu().then(veDoi); })
+    .catch(function (e) { TC.camXucHomNay = cu; veCamXuc(); baoLoi('loiCham', e.message); });
+}
+
+function veDoi() {
+  var d = TC.camXucDoi;
+  $('theDoi').classList.toggle('an', !(TC.quanLy && d));
+  if (!(TC.quanLy && d)) return;
+  var h = '<div class="doi-dem">' + Object.keys(d.dem).map(function (c) { return '<div><b>' + (EMO[c] || '') + ' ' + d.dem[c] + '</b>' + esc(c) + '</div>'; }).join('') + '</div>' +
+    '<div class="trong">' + d.daChon + '/' + d.soNguoi + ' người đã chia sẻ cảm xúc hôm nay.</div>';
+  if (d.canHoiHan.length) h += '<div class="hop cam">Nên hỏi thăm: ' + d.canHoiHan.map(function (x) { return (EMO[x.camXuc] || '') + ' <b>' + esc(x.ten) + '</b> (' + esc(x.camXuc.toLowerCase()) + ')'; }).join(', ') + '</div>';
+  $('doiCx').innerHTML = h;
 }
 
 function capNhatXinMuon() {
