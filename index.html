@@ -876,20 +876,32 @@ function moTaDon(d, coTen) {
   return '<div class="dau"><div>' + (coTen ? '<b>' + esc(d.ten) + '</b><br>' : '') + '<b>' + esc(ngay) + '</b>' + esc(buoi) + '</div>' +
     '<span class="nhan-tt ' + (LOP_TT[d.trangThai] || '') + '">' + esc(d.trangThai) + '</span></div>' +
     '<div class="mo">' + esc(d.loai) + ' (' + esc(d.soNgay) + ' ngày) · Lý do: ' + esc(d.lyDo) + '</div>' +
-    '<div class="mo">Gửi lúc ' + esc(d.thoiDiem) + (d.nguoiDuyet ? ' · ' + esc(d.trangThai === 'TỪ CHỐI' ? 'Từ chối' : 'Duyệt') + ' bởi ' + esc(d.nguoiDuyet) + ' lúc ' + esc(d.lucDuyet) : '') + '</div>';
+    '<div class="mo">Gửi lúc ' + esc(d.thoiDiem) + (d.nguoiDuyet ? ' · ' + esc(d.trangThai === 'TỪ CHỐI' ? 'Từ chối' : 'Duyệt') + ' bởi ' + esc(d.nguoiDuyet) + ' lúc ' + esc(d.lucDuyet) : '') + '</div>' +
+    (d.ghiChuHuy ? '<div class="mo">↩️ ' + esc(d.ghiChuHuy) + '</div>' : '');
+}
+
+function nutHuy(d, laQL) {
+  if (!d.huyDuoc) return '';
+  var chu = d.trangThai === 'ĐÃ DUYỆT' ? (laQL ? '↩️ Huỷ lịch nghỉ này' : '↩️ Huỷ lịch nghỉ — tôi sẽ đi làm') : 'Huỷ đơn này';
+  return '<button class="phu2 nho" onclick="huy(\'' + d.maDon + '\',' + (laQL ? 'true' : 'false') + ',\'' + d.trangThai + '\',this)">' + chu + '</button>';
 }
 
 function veDonToi() {
   var ds = TC.donCuaToi || [];
   $('dsDonToi').innerHTML = ds.length ? ds.map(function (d) {
-    return '<div class="don">' + moTaDon(d, false) + (d.trangThai === 'CHỜ DUYỆT' ? '<button class="phu2 nho" onclick="huy(\'' + d.maDon + '\')">Huỷ đơn này</button>' : '') + '</div>';
+    return '<div class="don">' + moTaDon(d, false) + nutHuy(d, false) + '</div>';
   }).join('') : '<div class="trong">Chưa có đơn nào.</div>';
 }
 
-function huy(maDon) {
-  if (!confirm('Huỷ đơn xin nghỉ này?')) return;
-  goi('huyDon', gop(giayTo(), { maDon: maDon })).then(taiTrangChu).then(function () { veLich(); veDonToi(); })
-    .catch(function (e) { baoLoi('loiNghi', e.message); });
+function huy(maDon, laQL, trangThai, nut) {
+  var hoi = trangThai === 'ĐÃ DUYỆT'
+    ? (laQL ? 'Huỷ lịch nghỉ đã duyệt này? Nhân viên sẽ phải đi làm những ngày đó.' : 'Huỷ lịch nghỉ đã được duyệt? Những ngày này bạn sẽ đi làm bình thường (quản lý sẽ nhận được thông báo).')
+    : 'Huỷ đơn xin nghỉ này?';
+  if (!confirm(hoi)) return;
+  if (nut) nut.disabled = true;
+  goi('huyDon', gop(giayTo(), { maDon: maDon })).then(taiTrangChu).then(function () {
+    if (laQL) veDuyet(); else { veLich(); veDonToi(); $('totNghi').textContent = '✅ Đã huỷ.'; $('totNghi').classList.remove('an'); }
+  }).catch(function (e) { if (nut) nut.disabled = false; baoLoi(laQL ? 'loiDuyet' : 'loiNghi', e.message); });
 }
 
 /* ---------- DUYỆT ĐƠN (quản lý) ---------- */
@@ -909,7 +921,7 @@ function veDuyet() {
   $('dsXinMuon').innerHTML = TC.xinMuonHomNay.length ? TC.xinMuonHomNay.map(function (x) {
     return '<div class="don"><b>' + esc(x.ten) + '</b> <span class="mo">· lần ' + esc(x.lan) + ' trong tháng · lúc ' + esc(String(x.thoiDiem).slice(11, 16)) + '</span><div class="mo">' + esc(x.lyDo) + '</div></div>';
   }).join('') : '<div class="trong">Hôm nay chưa ai xin phép đi muộn.</div>';
-  $('dsDaXuLy').innerHTML = TC.daXuLy.length ? TC.daXuLy.map(function (d) { return '<div class="don">' + moTaDon(d, true) + '</div>'; }).join('') : '<div class="trong">Chưa có.</div>';
+  $('dsDaXuLy').innerHTML = TC.daXuLy.length ? TC.daXuLy.map(function (d) { return '<div class="don">' + moTaDon(d, true) + (d.trangThai === 'ĐÃ DUYỆT' ? nutHuy(d, true) : '') + '</div>'; }).join('') : '<div class="trong">Chưa có.</div>';
 }
 function xuLy(maDon, kq, nut) {
   if (kq === 'TU_CHOI' && !confirm('Từ chối đơn này?')) return;
