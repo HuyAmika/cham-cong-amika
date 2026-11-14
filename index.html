@@ -93,6 +93,12 @@
   .o4 b i { font-style:normal; font-size:15px; color:var(--mo); font-weight:600; }
   .o4 .canh { background:#fff4e5; } .o4 .canh b { color:var(--cam); }
   .o4 .tot2 { background:#e7f6ec; } .o4 .tot2 b { color:var(--xl); }
+  .o4 .bam { cursor:pointer; border:2px solid transparent; -webkit-tap-highlight-color:transparent; }
+  .o4 .bam:active { transform:scale(.97); } .o4 .bam.chon { border-color:var(--xanh2); }
+  .o4 em { display:block; font-style:normal; font-size:12px; color:var(--xanh2); font-weight:600; margin-top:4px; }
+  .dsTen { margin:8px 0 0 20px; padding:0; } .dsTen li { margin:5px 0; }
+  .nhan { display:inline-block; font-size:12px; font-weight:700; padding:1px 7px; border-radius:8px; color:#fff; }
+  .nhan.xl { background:var(--xl); } .nhan.cam { background:var(--cam); } .nhan.xanh { background:var(--xanh2); }
   .cx { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
   .cx button { margin:0; padding:10px 2px; background:#f5f7fb; color:var(--chu); font-size:12px; font-weight:600; border:2px solid transparent; border-radius:12px; line-height:1.25; }
   .cx button span { display:block; font-size:28px; margin-bottom:4px; }
@@ -553,17 +559,35 @@ function chonCamXuc(c) {
     .catch(function (e) { TC.camXucHomNay = cu; veCamXuc(); baoLoi('loiCham', e.message); });
 }
 
+var DHN_CHON = '';
 function veDoiHomNay() {
   var d = TC.doiHomNay;
   $('theDoiHomNay').classList.toggle('an', !(TC.quanLy && d));
   if (!(TC.quanLy && d)) return;
-  function o(nhan, so, lop) { return '<div class="' + (lop || '') + '"><small>' + nhan + '</small><b>' + so + '</b></div>'; }
-  $('dhnO').innerHTML = o('✅ Đã chấm công', d.daCham + ' <i>/ ' + d.tong + '</i>', 'tot2') + o('⏰ Đi muộn', d.muon.length, d.muon.length ? 'canh' : '') +
-    o('🙏 Muộn có phép', d.coPhep.length) + o('📅 Nghỉ có duyệt', d.nghi.length);
-  function ds(tieuDe, mang, lop) { return mang.length ? '<div class="hop ' + lop + '"><b>' + tieuDe + ':</b> ' + mang.map(esc).join(', ') + '</div>' : ''; }
-  $('dhnDs').innerHTML = ds('Đi muộn', d.muon, 'cam') + ds('Muộn có phép', d.coPhep, 'xanh') + ds('Nghỉ', d.nghi, 'xanh') +
-    ds('Chưa chấm công', d.chuaCham, 'cam') + (d.daCham ? '<div class="trong">🏠 Đã bấm ra về: ' + d.daVe + '/' + d.daCham + '</div>' : '');
+  function o(k, nhan, so, lop) {
+    return '<div class="bam ' + (lop || '') + (DHN_CHON === k ? ' chon' : '') + '" onclick="chonDhn(\'' + k + '\')"><small>' + nhan + '</small><b>' + so + '</b><em>' + (DHN_CHON === k ? '▲ Thu gọn' : '▼ Xem danh sách') + '</em></div>';
+  }
+  $('dhnO').innerHTML = o('cham', '✅ Đã chấm công', d.daCham + ' <i>/ ' + d.tong + '</i>', 'tot2') + o('muon', '⏰ Đi muộn', d.muon.length, d.muon.length ? 'canh' : '') +
+    o('phep', '🙏 Muộn có phép', d.coPhep.length) + o('nghi', '📅 Nghỉ có duyệt', d.nghi.length);
+  function ds(tieuDe, mang, lop, rong) {
+    return '<div class="hop ' + lop + '"><b>' + tieuDe + ' (' + mang.length + ')</b>' +
+      (mang.length ? '<ol class="dsTen">' + mang.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ol>' : '<div class="trong">' + rong + '</div>') + '</div>';
+  }
+  var h = '';
+  if (DHN_CHON === 'cham') {
+    var nhanKq = { 'ĐÚNG GIỜ': '<span class="nhan xl">Đúng giờ</span>', 'MUỘN': '<span class="nhan cam">Muộn</span>', 'MUỘN CÓ PHÉP': '<span class="nhan xanh">Muộn có phép</span>' };
+    h = ds('✅ Đã chấm công', (d.daChamDs || []).map(function (x) {
+      return '<b>' + esc(x.ten) + '</b> — ' + esc(x.gio) + (x.coSo ? ' · ' + esc(x.coSo) : '') + ' ' + (nhanKq[x.kq] || esc(x.kq)) + (x.ve ? ' · về ' + esc(x.ve) : '');
+    }), 'xl', 'Chưa có ai chấm công.') +
+      ds('⏳ Chưa chấm công', d.chuaCham.map(esc), 'cam', 'Mọi người đã chấm đủ 👍') +
+      (d.nghi.length ? ds('📅 Nghỉ có duyệt', d.nghi.map(esc), 'xanh', '') : '');
+  } else if (DHN_CHON === 'muon') h = ds('⏰ Đi muộn', d.muon.map(esc), 'cam', 'Hôm nay chưa ai đi muộn 👍');
+  else if (DHN_CHON === 'phep') h = ds('🙏 Muộn có phép', d.coPhep.map(esc), 'xanh', 'Hôm nay không ai muộn có phép.');
+  else if (DHN_CHON === 'nghi') h = ds('📅 Nghỉ có duyệt', d.nghi.map(esc), 'xanh', 'Hôm nay không ai nghỉ.');
+  else h = '<div class="trong">👆 Chạm vào một ô để xem danh sách cụ thể.</div>';
+  $('dhnDs').innerHTML = h + (d.daCham ? '<div class="trong">🏠 Đã bấm ra về: ' + d.daVe + '/' + d.daCham + '</div>' : '');
 }
+function chonDhn(k) { DHN_CHON = DHN_CHON === k ? '' : k; veDoiHomNay(); }
 
 function veDoi() {
   var d = TC.camXucDoi;
