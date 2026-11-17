@@ -97,6 +97,12 @@
   .o4 .bam:active { transform:scale(.97); } .o4 .bam.chon { border-color:var(--xanh2); }
   .o4 em { display:block; font-style:normal; font-size:12px; color:var(--xanh2); font-weight:600; margin-top:4px; }
   .dsTen { margin:8px 0 0 20px; padding:0; } .dsTen li { margin:5px 0; }
+  .ln-ngay { padding:10px 12px; border-radius:10px; background:#eef3fa; margin-top:8px; }
+  .ln-ngay.hom { background:#fff4e5; border-left:4px solid var(--cam); }
+  .ln-ngay > b { display:block; font-size:14px; color:var(--xanh); margin-bottom:4px; }
+  .ln-ngay.hom > b { color:var(--cam); }
+  .ln-ngay div { font-size:15px; line-height:1.6; }
+  .ln-ngay small { color:var(--mo); }
   .nhan { display:inline-block; font-size:12px; font-weight:700; padding:1px 7px; border-radius:8px; color:#fff; }
   .nhan.xl { background:var(--xl); } .nhan.cam { background:var(--cam); } .nhan.xanh { background:var(--xanh2); }
   .cx { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
@@ -216,6 +222,12 @@
       <h3>Cảm xúc hôm nay của bạn thế nào?</h3>
       <div class="cx" id="cxNut"></div>
       <div id="cxCamOn" class="trong" style="margin-top:10px"></div>
+    </div>
+
+    <!-- LỊCH NGHỈ CỦA ĐỘI (ai cũng thấy) -->
+    <div class="the an" id="theLichNghi">
+      <h3>📅 Lịch nghỉ của đội</h3>
+      <div id="lnDs"></div>
     </div>
 
     <!-- TỔNG QUAN THÁNG -->
@@ -507,7 +519,7 @@ function veChinh() {
   var canViTri = !TC.quanLy && (!hn || !hn.gioVe);
   $('dongViTri').classList.toggle('an', !canViTri);
   if (canViTri) theoDoiViTri(); else dungViTri();
-  veCamXuc(); veTongQuan(); veDoi(); veDoiHomNay();
+  veCamXuc(); veTongQuan(); veDoi(); veDoiHomNay(); veLichNghi();
   if (TC.quanLy) { // quản lý chỉ duyệt + theo dõi đội, không chấm công
     ['khungChup', 'khungXinMuon', 'nutRaVe', 'dongViTri', 'theCamXuc', 'theTongQuan', 'nutXinNghi'].forEach(function (id) { $(id).classList.add('an'); });
     $('hopHomNay').innerHTML = '';
@@ -588,6 +600,38 @@ function veDoiHomNay() {
   $('dhnDs').innerHTML = h + (d.daCham ? '<div class="trong">🏠 Đã bấm ra về: ' + d.daVe + '/' + d.daCham + '</div>' : '');
 }
 function chonDhn(k) { DHN_CHON = DHN_CHON === k ? '' : k; veDoiHomNay(); }
+
+function veLichNghi() {
+  var L = TC.lichNghiDoi;
+  $('theLichNghi').classList.toggle('an', !L);
+  if (!L) return;
+  if (!L.length) { $('lnDs').innerHTML = '<div class="trong">Không ai có lịch nghỉ trong 2 tuần tới. 👍</div>'; return; }
+  var THU = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+  var BUOI = { 'CẢ NGÀY': 'cả ngày', 'SÁNG': 'nghỉ sáng', 'CHIỀU': 'nghỉ chiều' };
+  var hom = TC.homNayIso, p = hom.split('-'), mai = new Date(+p[0], +p[1] - 1, +p[2] + 1);
+  var maiIso = mai.getFullYear() + '-' + ('0' + (mai.getMonth() + 1)).slice(-2) + '-' + ('0' + mai.getDate()).slice(-2);
+  $('lnDs').innerHTML = L.map(function (x) {
+    var q = x.ngay.split('-'), d = new Date(+q[0], +q[1] - 1, +q[2]);
+    var nhan = x.ngay === hom ? 'Hôm nay' : x.ngay === maiIso ? 'Ngày mai' : THU[d.getDay()];
+    nhan += ', ' + q[2] + '/' + q[1];
+    return '<div class="ln-ngay' + (x.ngay === hom ? ' hom' : '') + '"><b>' + nhan + '</b>' + x.ds.map(function (n) {
+      return '<div>• <b>' + esc(n.ten) + '</b>' + (n.ma === TC.ma ? ' (bạn)' : '') + ' — ' + esc(BUOI[n.buoi] || n.buoi.toLowerCase()) +
+        (n.nhom && n.nhom !== TC.nhom && n.nhom !== 'TẤT CẢ' ? ' <small>· ' + esc(n.nhom) + '</small>' : '') + '</div>';
+    }).join('') + '</div>';
+  }).join('');
+}
+
+// Mở lại app (từ nền) → tự lấy lịch nghỉ + đội hôm nay mới nhất, không làm gián đoạn việc đang chấm
+var LUC_AN = 0;
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden) { LUC_AN = Date.now(); return; }
+  if (!TC || !TOI || $('mhChinh').classList.contains('an') || Date.now() - LUC_AN < 30000) return;
+  goi('trangChu', TOI.ma, TOI.sdt, TOI.mql || '').then(function (t) {
+    if (t.homNayIso !== TC.homNayIso) { TC = t; veChinh(); return; }
+    TC.lichNghiDoi = t.lichNghiDoi; TC.doiHomNay = t.doiHomNay;
+    veLichNghi(); veDoiHomNay();
+  }).catch(function () {});
+});
 
 function veDoi() {
   var d = TC.camXucDoi;
