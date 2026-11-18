@@ -31,6 +31,8 @@
   button.lon { background:var(--xl); font-size:19px; padding:18px; }
   button.vang { background:#f4b400; color:#3b2a00; }
   button.cam { background:var(--cam); }
+  button.trua { background:#0f8b8d; }
+  .capnhat { text-align:center; font-size:13px; color:var(--mo); margin-top:6px; }
   button.do { background:var(--do); }
   button.nho { padding:10px; font-size:15px; margin-top:10px; }
   .an { display:none !important; }
@@ -190,6 +192,7 @@
       <div class="dongho" id="dongHo">--:--:--</div>
       <div class="ngay" id="ngayNay"></div>
       <p class="phu" style="text-align:center;margin:0">Giờ chấm muộn nhất: <b id="gioMuon">07:15</b></p>
+      <div id="dongCapNhat" class="capnhat an"></div>
       <div id="dongViTri" class="an"></div>
       <div id="hopHomNay"></div>
 
@@ -209,10 +212,12 @@
         <div class="khung" id="khungAnh" style="margin-top:14px"><video id="video" playsinline autoplay muted></video><img id="anhXem" class="an" alt=""></div>
         <input id="anhFile" type="file" accept="image/*" capture="user" class="an" onchange="khiChonFile(this)">
         <button class="lon" id="nutCham" onclick="bamChamCong()">📸 Chụp ảnh &amp; chấm công</button>
+        <div class="trong an" id="goiYChieu" style="margin-top:8px"></div>
         <div class="trangthai" id="trangThai"></div>
       </div>
 
       <!-- Ra về -->
+      <button class="trua an" id="nutNghiTrua" onclick="bamNghiTrua()">🍱 Nghỉ trưa</button>
       <button class="cam an" id="nutRaVe" onclick="bamRaVe()">🏠 Ra về</button>
       <div id="loiCham" class="loi an"></div>
     </div>
@@ -320,10 +325,13 @@ var KHOA = 'amika_cham_cong_v1';
 var MAN = ['mhTai','mhChon','mhKhai','mhDisc','mhDiscKq','mhChinh','mhKq','mhNghi','mhDuyet'];
 
 function $(id) { return document.getElementById(id); }
-function hien(id) { MAN.forEach(function (s) { $(s).classList.toggle('an', s !== id); }); window.scrollTo(0, 0); }
+function hien(id) { var doi = $(id).classList.contains('an'); MAN.forEach(function (s) { $(s).classList.toggle('an', s !== id); }); if (doi) window.scrollTo(0, 0); }
 function baoLoi(id, msg) { var e = $(id); if (!msg) { e.classList.add('an'); return; } e.textContent = msg; e.classList.remove('an'); }
 // Địa chỉ "cửa nhận dữ liệu" của phần mềm trên Google (dùng khi trang mở từ GitHub Pages)
 var API = 'https://script.google.com/macros/s/AKfycbyVwPBkRmGBYc-6PHbvq5x30kYDCNnUyJTRmKk5Tp1ceW_rMWjnqiHSY9G8fgXbvuOrNQ/exec';
+// Các việc làm xong thì máy chủ gửi kèm luôn màn chính mới (đỡ 1 lần hỏi lại ~3 giây)
+var HAM_KEM_TC = ['raVe', 'nghiTrua', 'xinDiMuon', 'guiDonNghi', 'huyDon', 'duyetDon', 'ghiCamXuc'];
+var TC_KEM = 0;
 function goi(ten) {
   var args = Array.prototype.slice.call(arguments, 1);
   if (window.google && google.script && google.script.run) { // đang mở bằng link Google cũ
@@ -334,10 +342,14 @@ function goi(ten) {
   }
   // đang mở bằng link GitHub Pages: gửi thẳng tới Google, không kèm tài khoản Google của điện thoại
   return fetch(API, { method: 'POST', redirect: 'follow', credentials: 'omit',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: ten, args: args }) })
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: ten, args: args, kemTC: HAM_KEM_TC.indexOf(ten) >= 0 }) })
     .catch(function () { throw new Error('Không kết nối được máy chủ. Kiểm tra mạng (Wi-Fi/4G) rồi thử lại.'); })
     .then(function (r) { return r.json(); })
-    .then(function (j) { if (!j.ok) throw new Error(j.loi || 'Có lỗi, thử lại.'); return j.data; });
+    .then(function (j) {
+      if (!j.ok) throw new Error(j.loi || 'Có lỗi, thử lại.');
+      if (j.tc && TOI && j.tc.ma === TOI.ma) { apTC(j.tc); TC_KEM = Date.now(); }
+      return j.data;
+    });
 }
 function luu(o) { try { if (o) localStorage.setItem(KHOA, JSON.stringify(o)); else localStorage.removeItem(KHOA); } catch (e) {} }
 function doc() { try { return JSON.parse(localStorage.getItem(KHOA) || 'null'); } catch (e) { return null; } }
@@ -350,25 +362,68 @@ function isoVN(d) { return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Ch
 function dd(iso) { var p = iso.split('-'); return p[2] + '/' + p[1]; }
 function thu(iso) { var p = iso.split('-'); return ['CN','T2','T3','T4','T5','T6','T7'][new Date(+p[0], +p[1] - 1, +p[2]).getDay()]; }
 
-/* ---------- KHỞI ĐỘNG ---------- */
-goi('layDuLieuBanDau').then(function (d) {
-  DL = d;
-  $('gioMuon').textContent = d.gioMuon;
-  dungDanhSach();
-  var s = doc();
-  if (s && s.ma && s.sdt) {
+/* ---------- KHỞI ĐỘNG ----------
+ * Mở app: hiện NGAY màn chính từ dữ liệu lần trước (lưu trong máy), đồng thời hỏi máy chủ 1 lần (moDau)
+ * lấy dữ liệu mới rồi vẽ lại. Trước đây phải chờ 2 lần hỏi nối tiếp (~8–10 giây).
+ */
+var KHOA_TC = 'amika_tc_v1', KHOA_DL = 'amika_dl_v1', BAN = false;
+function docO(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+function ghiO(k, v) { try { if (v) localStorage.setItem(k, JSON.stringify(v)); else localStorage.removeItem(k); } catch (e) {} }
+function apDL(d) { DL = d; $('gioMuon').textContent = d.gioMuon; dungDanhSach(); ghiO(KHOA_DL, d); }
+function apTC(t) { TC = t; TOI.ten = t.ten; TOI.quanLy = t.quanLy; LECH = t.gioServer - Date.now(); ghiO(KHOA_TC, { ma: TOI.ma, t: t }); }
+function dangCapNhat(bat, chu) {
+  var e = $('dongCapNhat'); if (!e) return;
+  e.textContent = chu || (bat ? '🔄 Đang cập nhật…' : '');
+  e.classList.toggle('an', !bat && !chu);
+}
+/** Dữ liệu lần trước là của hôm khác → bỏ phần "hôm nay" để không hiện nhầm. */
+function tcHomNay(t) {
+  var hom = isoVN(new Date());
+  if (t.homNayIso === hom) return t;
+  var x = JSON.parse(JSON.stringify(t));
+  x.homNayIso = hom; x.homNay = null; x.camXucHomNay = ''; x.doiHomNay = null; x.camXucDoi = null; x.xinMuonHomNay = [];
+  x.xinMuon = gop(x.xinMuon || {}, { daXinHomNay: '' });
+  var L = (x.lichNghiDoi || []).filter(function (d) { return d.ngay === hom; })[0];
+  var toi = L && L.ds.filter(function (n) { return n.ma === x.ma; })[0];
+  x.nghiHomNay = toi ? toi.buoi : '';
+  return x;
+}
+/** Vẽ lại màn đang mở sau khi có dữ liệu mới (không làm gián đoạn việc đang làm). */
+function veLai() {
+  if (BAN || !TC) return;
+  if (!$('mhChinh').classList.contains('an') || !$('mhTai').classList.contains('an')) veChinh(true);
+  else if (!$('mhDuyet').classList.contains('an') && TC.quanLy) veDuyet();
+}
+function dangXuat(loi) {
+  luu(null); ghiO(KHOA_TC, null); TOI = null; TC = null; dungCamera(); dungViTri();
+  $('doiNguoi').classList.add('an'); hien('mhChon'); if (loi) baoLoi('loiChon', loi);
+}
+function khoiDong() {
+  var s = doc(), dlCu = docO(KHOA_DL), tcCu = docO(KHOA_TC), coDN = !!(s && s.ma && s.sdt);
+  if (dlCu) apDL(dlCu);
+  if (coDN) {
     TOI = s;
-    taiTrangChu().then(function () { veChinh(); }).catch(function () { luu(null); TOI = null; hien('mhChon'); });
-  } else hien('mhChon');
-}).catch(function (e) { $('mhTai').innerHTML = '<div class="loi">Không tải được: ' + esc(e.message) + '<br>Kiểm tra mạng rồi tải lại trang.</div>'; });
-
-function taiTrangChu() {
-  return goi('trangChu', TOI.ma, TOI.sdt, TOI.mql || '').then(function (t) {
-    TC = t; TOI.ten = t.ten; TOI.quanLy = t.quanLy;
-    LECH = t.gioServer - Date.now();
-    return t;
+    if (tcCu && tcCu.ma === s.ma && dlCu) { TC = tcHomNay(tcCu.t); TOI.ten = TC.ten; TOI.quanLy = TC.quanLy; veChinh(); dangCapNhat(true); }
+  } else if (dlCu) hien('mhChon');
+  goi('moDau', coDN ? s.ma : '', coDN ? s.sdt : '', coDN ? (s.mql || '') : '').then(function (r) {
+    apDL(r.dl);
+    if (!coDN) { if (!$('mhTai').classList.contains('an')) hien('mhChon'); return; }
+    if (!TOI || TOI.ma !== s.ma) return; // đã đổi người trong lúc chờ
+    if (r.tc) { apTC(r.tc); dangCapNhat(false); veLai(); }
+    else dangXuat(r.loiTC);
+  }).catch(function (e) {
+    if (TC) dangCapNhat(false, '⚠️ Mạng yếu — đang hiện dữ liệu lần trước. ' + e.message);
+    else $('mhTai').innerHTML = '<div class="loi">Không tải được: ' + esc(e.message) + '<br>Kiểm tra mạng rồi tải lại trang.</div><button onclick="location.reload()">🔄 Tải lại</button>';
   });
 }
+setTimeout(khoiDong, 0); // chạy sau khi cả trang đã nạp xong
+
+function taiTrangChu() {
+  if (Date.now() - TC_KEM < 5000) { TC_KEM = 0; return Promise.resolve(TC); } // vừa nhận kèm → khỏi hỏi lại
+  return goi('trangChu', TOI.ma, TOI.sdt, TOI.mql || '').then(function (t) { apTC(t); return t; });
+}
+/** Tải màn chính trong nền (sau khi chấm công) — người dùng không phải chờ. */
+function capNhatNen() { if (TOI) goi('trangChu', TOI.ma, TOI.sdt, TOI.mql || '').then(function (t) { if (TOI && t.ma === TOI.ma) { apTC(t); veLai(); } }).catch(function () {}); }
 
 function dungDanhSach() {
   var h = '<option value="">— Chọn tên của bạn —</option>';
@@ -404,7 +459,7 @@ function vao() {
     .then(function () { $('nutVao').disabled = false; });
 }
 
-function doiNguoi() { luu(null); TOI = null; TC = null; dungCamera(); dungViTri(); $('doiNguoi').classList.add('an'); $('chonTen').value = ''; khiChonTen(); hien('mhChon'); }
+function doiNguoi() { luu(null); ghiO(KHOA_TC, null); TOI = null; TC = null; dungCamera(); dungViTri(); $('doiNguoi').classList.add('an'); $('chonTen').value = ''; khiChonTen(); hien('mhChon'); }
 
 /* ---------- KHAI BÁO ---------- */
 function batDauKhaiBao() {
@@ -493,35 +548,67 @@ function guiKhaiBao() {
 }
 
 /* ---------- MÀN CHÍNH ---------- */
-function taiVaVeChinh() { hien('mhTai'); taiTrangChu().then(veChinh).catch(function (e) { alert(e.message); doiNguoi(); }); }
+function taiVaVeChinh() {
+  if (TC && TOI && TC.ma === TOI.ma) return veChinh(); // đã có dữ liệu (cập nhật trong nền) → vào ngay
+  hien('mhTai'); taiTrangChu().then(function () { veChinh(); }).catch(function (e) { alert(e.message); doiNguoi(); });
+}
 
-function veChinh() {
+function gio5(x) { return esc(String(x || '').slice(0, 5)); }
+function daQuaGio(moc) { return gioVN(bayGio()).slice(0, 5) >= String(moc || '11:00'); }
+/** Nút chụp hôm nay dùng cho buổi nào: 'SANG' (vào sáng) | 'CHIEU' (Làm chiều) | '' (không cần chụp) */
+function buoiChup() {
+  var hn = TC.homNay;
+  if (!hn) return daQuaGio(TC.gioLamChieu) ? 'CHIEU' : 'SANG';
+  if (hn.gioTrua && !hn.gioChieu && !hn.chiChieu && !hn.gioVe) return 'CHIEU';
+  return '';
+}
+function capNhatNutCham() {
+  if (!TC || TC.quanLy || BAN) return;
+  var b = buoiChup(), hn = TC.homNay;
+  $('nutCham').textContent = b === 'CHIEU' ? '📸 Làm chiều — chụp ảnh chấm công' : '📸 Chụp ảnh & chấm công';
+  var g = '';
+  if (b === 'CHIEU' && !hn) g = 'Hôm nay bạn chưa chấm buổi sáng → chấm lúc này tính là <b>chỉ làm buổi chiều</b> (nửa công, không tính đi muộn).';
+  else if (b === 'CHIEU') g = 'Chấm "Làm chiều" để được tính đủ công cả ngày.';
+  $('goiYChieu').innerHTML = g; $('goiYChieu').classList.toggle('an', !g);
+}
+
+function veChinh(nen) {
   hien('mhChinh');
   $('doiNguoi').classList.remove('an');
   $('xinChao').textContent = 'Xin chào ' + TC.ten;
-  baoLoi('loiCham'); $('trangThai').textContent = '';
+  if (!nen) { baoLoi('loiCham'); $('trangThai').textContent = ''; $('formXinMuon').classList.add('an'); }
   var hn = TC.homNay, h = '';
   var app = trinhDuyetTrongApp();
   if (app && !(hn && hn.gioVe)) h += '<div class="loi">⚠️ Bạn đang mở link bên trong <b>' + esc(app) + '</b> — có thể không lấy được vị trí. Bấm nút ••• hoặc ⋮ ở góc trên → <b>"Mở bằng trình duyệt" / "Mở trong Safari"</b>.</div>';
   if (TC.nghiHomNay) h += '<div class="hop xanh">📅 Hôm nay bạn có lịch nghỉ <b>' + esc(TC.nghiHomNay.toLowerCase()) + '</b> đã được duyệt.</div>';
   if (TC.xinMuon.daXinHomNay) h += '<div class="hop cam">🙏 Bạn đã xin phép đi muộn hôm nay: ' + esc(TC.xinMuon.daXinHomNay) + '</div>';
   if (hn) {
-    var muon = hn.ketQua === 'MUỘN';
-    h += '<div class="hop ' + (muon ? 'cam' : 'xl') + '">✅ Đã chấm công vào lúc <b>' + esc(String(hn.gio).slice(0, 5)) + '</b> tại ' + esc(hn.coSo) + ' — <b>' + esc(hn.ketQua) + '</b>' +
-      (hn.gioVe ? '<br>🏠 Đã bấm ra về lúc <b>' + esc(String(hn.gioVe).slice(0, 5)) + '</b>' : '') + '</div>';
+    var muon = hn.ketQua === 'MUỘN', d = [];
+    if (hn.chiChieu) d.push('✅ Đã chấm công <b>buổi chiều</b> lúc <b>' + gio5(hn.gio) + '</b> tại ' + esc(hn.coSo) + ' — chỉ làm buổi chiều (không tính muộn)');
+    else d.push('✅ Đã chấm công vào lúc <b>' + gio5(hn.gio) + '</b> tại ' + esc(hn.coSo) + ' — <b>' + esc(hn.ketQua) + '</b>');
+    if (hn.gioTrua) d.push('🍱 Nghỉ trưa lúc <b>' + gio5(hn.gioTrua) + '</b>' + (!hn.gioChieu && !hn.gioVe ? ' — chiều quay lại nhớ bấm <b>Làm chiều</b>' : ''));
+    if (hn.gioChieu && !hn.chiChieu) d.push('☀️ Vào làm chiều lúc <b>' + gio5(hn.gioChieu) + '</b>');
+    if (hn.gioVe) d.push('🏠 Đã bấm ra về lúc <b>' + gio5(hn.gioVe) + '</b>');
+    h += '<div class="hop ' + (muon ? 'cam' : 'xl') + '">' + d.join('<br>') + '</div>';
   }
   $('hopHomNay').innerHTML = h;
-  $('khungChup').classList.toggle('an', !!hn);
-  $('nutRaVe').classList.toggle('an', !(hn && !hn.gioVe));
+  var b = buoiChup();
+  var hienTrua = !!(hn && !hn.chiChieu && !hn.gioTrua && !hn.gioVe);
+  var hienVe = !!(hn && !hn.gioVe && !(hn.gioTrua && !hn.gioChieu));
+  if (!BAN) {
+    $('khungChup').classList.toggle('an', !b);
+    $('nutNghiTrua').classList.toggle('an', !hienTrua);
+    $('nutRaVe').classList.toggle('an', !hienVe);
+    capNhatNutCham();
+  }
   capNhatXinMuon();
-  $('formXinMuon').classList.add('an');
-  if (!hn && !TC.quanLy) batCamera(); else dungCamera();
-  var canViTri = !TC.quanLy && (!hn || !hn.gioVe);
+  if (!BAN) { if (b && !TC.quanLy) batCamera(); else dungCamera(); }
+  var canViTri = !TC.quanLy && !!(b || hienTrua || hienVe);
   $('dongViTri').classList.toggle('an', !canViTri);
   if (canViTri) theoDoiViTri(); else dungViTri();
   veCamXuc(); veTongQuan(); veDoi(); veDoiHomNay(); veLichNghi();
   if (TC.quanLy) { // quản lý chỉ duyệt + theo dõi đội, không chấm công
-    ['khungChup', 'khungXinMuon', 'nutRaVe', 'dongViTri', 'theCamXuc', 'theTongQuan', 'nutXinNghi'].forEach(function (id) { $(id).classList.add('an'); });
+    ['khungChup', 'khungXinMuon', 'nutRaVe', 'nutNghiTrua', 'dongViTri', 'theCamXuc', 'theTongQuan', 'nutXinNghi'].forEach(function (id) { $(id).classList.add('an'); });
     $('hopHomNay').innerHTML = '';
     dungCamera(); dungViTri();
   } else $('nutXinNghi').classList.remove('an');
@@ -587,9 +674,9 @@ function veDoiHomNay() {
   }
   var h = '';
   if (DHN_CHON === 'cham') {
-    var nhanKq = { 'ĐÚNG GIỜ': '<span class="nhan xl">Đúng giờ</span>', 'MUỘN': '<span class="nhan cam">Muộn</span>', 'MUỘN CÓ PHÉP': '<span class="nhan xanh">Muộn có phép</span>' };
+    var nhanKq = { 'ĐÚNG GIỜ': '<span class="nhan xl">Đúng giờ</span>', 'MUỘN': '<span class="nhan cam">Muộn</span>', 'MUỘN CÓ PHÉP': '<span class="nhan xanh">Muộn có phép</span>', 'CHỈ CHIỀU': '<span class="nhan xl">Chỉ làm chiều</span>' };
     h = ds('✅ Đã chấm công', (d.daChamDs || []).map(function (x) {
-      return '<b>' + esc(x.ten) + '</b> — ' + esc(x.gio) + (x.coSo ? ' · ' + esc(x.coSo) : '') + ' ' + (nhanKq[x.kq] || esc(x.kq)) + (x.ve ? ' · về ' + esc(x.ve) : '');
+      return '<b>' + esc(x.ten) + '</b> — ' + esc(x.gio) + (x.coSo ? ' · ' + esc(x.coSo) : '') + ' ' + (nhanKq[x.kq] || esc(x.kq)) + (x.trua ? ' · trưa ' + esc(x.trua) : '') + (x.chieu ? ' · chiều ' + esc(x.chieu) : '') + (x.ve ? ' · về ' + esc(x.ve) : '');
     }), 'xl', 'Chưa có ai chấm công.') +
       ds('⏳ Chưa chấm công', d.chuaCham.map(esc), 'cam', 'Mọi người đã chấm đủ 👍') +
       (d.nghi.length ? ds('📅 Nghỉ có duyệt', d.nghi.map(esc), 'xanh', '') : '');
@@ -626,11 +713,7 @@ var LUC_AN = 0;
 document.addEventListener('visibilitychange', function () {
   if (document.hidden) { LUC_AN = Date.now(); return; }
   if (!TC || !TOI || $('mhChinh').classList.contains('an') || Date.now() - LUC_AN < 30000) return;
-  goi('trangChu', TOI.ma, TOI.sdt, TOI.mql || '').then(function (t) {
-    if (t.homNayIso !== TC.homNayIso) { TC = t; veChinh(); return; }
-    TC.lichNghiDoi = t.lichNghiDoi; TC.doiHomNay = t.doiHomNay;
-    veLichNghi(); veDoiHomNay();
-  }).catch(function () {});
+  capNhatNen();
 });
 
 function veDoi() {
@@ -655,7 +738,7 @@ setInterval(function () {
   var n = bayGio();
   $('dongHo').textContent = gioVN(n);
   $('ngayNay').textContent = n.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' });
-  capNhatXinMuon();
+  capNhatXinMuon(); capNhatNutCham();
 }, 1000);
 
 /* ---------- XIN PHÉP ĐI MUỘN ---------- */
@@ -697,7 +780,7 @@ function khiChonFile(inp) {
   img.src = URL.createObjectURL(f);
 }
 function thuNho(nguon, w, h, latGuong) {
-  var max = 720, k = Math.min(1, max / Math.max(w, h));
+  var max = 640, k = Math.min(1, max / Math.max(w, h));
   var c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
   var g = c.getContext('2d');
   if (latGuong) { g.translate(c.width, 0); g.scale(-1, 1); }
@@ -706,7 +789,7 @@ function thuNho(nguon, w, h, latGuong) {
   var t = bayGio().toLocaleString('vi-VN', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' }) + ' · ' + TC.ten;
   g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, c.height - 34, c.width, 34);
   g.fillStyle = '#fff'; g.font = 'bold 18px Arial'; g.fillText(t, 10, c.height - 11);
-  return c.toDataURL('image/jpeg', 0.75);
+  return c.toDataURL('image/jpeg', 0.7);
 }
 
 function bamChamCong() {
@@ -802,23 +885,40 @@ function layViTri(giayToiDa) {
 }
 
 function batDauGui(anh) {
+  var buoi = buoiChup() || 'SANG';
+  BAN = true;
   $('nutCham').disabled = true;
   $('trangThai').textContent = '📍 Đang lấy vị trí…';
   layViTri().then(function (p) {
     $('trangThai').textContent = '⏳ Đang gửi chấm công…';
-    return goi('chamCong', gop(giayTo(), { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, anh: anh }));
-  }).then(hienKetQua).catch(function (e) {
+    return goi('chamCong', gop(giayTo(), { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, anh: anh, buoi: buoi }));
+  }).then(function (r) { BAN = false; hienKetQua(r); }).catch(function (e) {
+    BAN = false;
     baoLoi('loiCham', e.message); $('trangThai').textContent = '';
     $('nutCham').disabled = false; batCamera();
   });
 }
 
+/** Cập nhật ngay màn chính theo kết quả (không chờ máy chủ), rồi tải bản chuẩn trong nền. */
+function apKetQua(r) {
+  var KQ = { DUNG_GIO: 'ĐÚNG GIỜ', MUON: 'MUỘN', MUON_CO_PHEP: 'MUỘN CÓ PHÉP' };
+  if (KQ[r.trangThai]) TC.homNay = { gio: r.gio, coSo: r.coSo, ketQua: KQ[r.trangThai], gioVe: '', gioTrua: '', gioChieu: '', chiChieu: false };
+  else if (r.trangThai === 'CHI_CHIEU') TC.homNay = { gio: r.gio, coSo: r.coSo, ketQua: 'CHỈ CHIỀU', gioVe: '', gioTrua: '', gioChieu: r.gio, chiChieu: true };
+  else if (r.trangThai === 'LAM_CHIEU' && TC.homNay) TC.homNay.gioChieu = r.gio;
+  if (r.trangThai !== 'NGOAI_VUNG') capNhatNen();
+}
+
 function hienKetQua(r) {
   $('nutCham').disabled = false;
+  apKetQua(r);
   var h = '', cls = 'xl';
   if (r.trangThai === 'DUNG_GIO') {
     h = '<div class="icon">✅</div><h2>Chấm công thành công</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>' +
       (r.ghiChu ? esc(r.ghiChu) : 'Đúng giờ. Chúc bạn một ngày làm việc vui vẻ!') + '</p>';
+  } else if (r.trangThai === 'LAM_CHIEU') {
+    h = '<div class="icon">☀️</div><h2>Đã chấm công buổi chiều</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>Hôm nay bạn được tính đủ công cả ngày. Chiều làm việc vui vẻ!</p>';
+  } else if (r.trangThai === 'CHI_CHIEU') {
+    h = '<div class="icon">☀️</div><h2>Đã chấm công — làm buổi chiều</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>Hôm nay tính <b>nửa công</b> (buổi chiều), <b>không tính đi muộn</b>.</p>';
   } else if (r.trangThai === 'MUON_CO_PHEP') {
     h = '<div class="icon">🙏</div><h2>Đã chấm công — muộn có phép</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>Bạn đã xin phép nên không tính đi muộn.</p>';
   } else if (r.trangThai === 'MUON') {
@@ -827,7 +927,8 @@ function hienKetQua(r) {
       '<div class="quy">Đây là lần thứ <b>' + r.lanMuon + '</b> trong tháng bạn đi muộn, cảm ơn bạn đã đóng góp <b>' + Number(r.tien).toLocaleString('vi-VN') +
       ' VND</b> vào quỹ <b>' + esc(r.tenQuy) + '</b> - nơi số tiền đi muộn cuối năm sẽ được chuyển cho những bệnh nhân nghèo hoặc bệnh nhân chạy thận nhân tạo ở Nam Định.</div>';
   } else if (r.trangThai === 'DA_CHAM') {
-    h = '<div class="icon">👍</div><h2>Hôm nay bạn đã chấm rồi</h2><p>Lúc <b>' + esc(String(r.gio).slice(0, 5)) + '</b> tại ' + esc(r.coSo) + ' — ' + esc(r.ketQua) + '</p>';
+    h = '<div class="icon">👍</div><h2>Hôm nay bạn đã chấm rồi</h2><p>Lúc <b>' + esc(String(r.gio).slice(0, 5)) + '</b> tại ' + esc(r.coSo) + ' — ' + esc(r.ketQua) +
+      (r.gioChieu && r.ketQua !== 'CHỈ CHIỀU' ? '<br>Vào chiều lúc <b>' + esc(String(r.gioChieu).slice(0, 5)) + '</b>' : '') + '</p>';
   } else {
     cls = 'do';
     h = '<div class="icon">📍</div><h2>Chưa chấm được công</h2><p>Bạn đang cách <b>' + esc(r.coSo) + '</b> khoảng <b>' + Number(r.cach).toLocaleString('vi-VN') +
@@ -839,23 +940,37 @@ function hienKetQua(r) {
   hien('mhKq');
 }
 
-/* ---------- RA VỀ ---------- */
-function bamRaVe() {
+/* ---------- RA VỀ / NGHỈ TRƯA ---------- */
+function bamGhiGio(ham, nut, hoi, dangGhi, xong) {
   var g = gioVN(bayGio()).slice(0, 5);
-  if (!confirm('Xác nhận ra về lúc ' + g + '?')) return;
+  if (!confirm(hoi.replace('{g}', g))) return;
   baoLoi('loiCham');
-  $('nutRaVe').disabled = true;
-  $('trangThai').textContent = '📍 Đang ghi giờ ra về…';
+  BAN = true; $(nut).disabled = true;
+  $('trangThai').textContent = dangGhi;
   layViTri(8).catch(function () { return null; }).then(function (p) {
-    return goi('raVe', gop(giayTo(), p ? { lat: p.coords.latitude, lng: p.coords.longitude } : {}));
+    return goi(ham, gop(giayTo(), p ? { lat: p.coords.latitude, lng: p.coords.longitude } : {}));
   }).then(function (r) {
+    BAN = false;
     $('kq').className = 'the kq xl';
-    $('kq').innerHTML = '<div class="icon">🏠</div><h2>Đã ghi giờ ra về</h2><p>Lúc <b>' + esc(String(r.gioVe).slice(0, 5)) + '</b>. Cảm ơn bạn, về nhà an toàn nhé!</p>' +
-      (r.ngoaiXuong ? '<p class="phu">Lưu ý: lúc bấm bạn đang ở ngoài xưởng (cách ' + r.cach + ' m).</p>' : '') +
+    $('kq').innerHTML = xong(r) + (r.ngoaiXuong ? '<p class="phu">Lưu ý: lúc bấm bạn đang ở ngoài xưởng (cách ' + r.cach + ' m).</p>' : '') +
       '<button onclick="taiVaVeChinh()">Về màn chính</button>';
     hien('mhKq');
-  }).catch(function (e) { baoLoi('loiCham', e.message); })
-    .then(function () { $('nutRaVe').disabled = false; $('trangThai').textContent = ''; });
+  }).catch(function (e) { BAN = false; baoLoi('loiCham', e.message); })
+    .then(function () { $(nut).disabled = false; $('trangThai').textContent = ''; });
+}
+function bamRaVe() {
+  bamGhiGio('raVe', 'nutRaVe', 'Xác nhận ra về lúc {g}?', '📍 Đang ghi giờ ra về…', function (r) {
+    if (TC.homNay) TC.homNay.gioVe = r.gioVe;
+    return '<div class="icon">🏠</div><h2>Đã ghi giờ ra về</h2><p>Lúc <b>' + esc(String(r.gioVe).slice(0, 5)) + '</b>. Cảm ơn bạn, về nhà an toàn nhé!</p>';
+  });
+}
+function bamNghiTrua() {
+  bamGhiGio('nghiTrua', 'nutNghiTrua', 'Xác nhận nghỉ trưa lúc {g}?\n\nChiều quay lại làm nhớ bấm "Làm chiều" (chụp ảnh). Không bấm thì hôm nay tính nửa công (buổi sáng).',
+    '📍 Đang ghi giờ nghỉ trưa…', function (r) {
+      if (TC.homNay) TC.homNay.gioTrua = r.gioTrua;
+      return '<div class="icon">🍱</div><h2>Đã ghi giờ nghỉ trưa</h2><p>Lúc <b>' + esc(String(r.gioTrua).slice(0, 5)) + '</b>. Chúc bạn ăn trưa ngon miệng!</p>' +
+        '<div class="hop xanh">Chiều quay lại làm: mở app, bấm <b>📸 Làm chiều</b> (chụp ảnh) để được tính <b>đủ công</b>.<br>Chiều nghỉ thì không cần bấm gì — hôm nay tính <b>nửa công</b>.</div>';
+    });
 }
 
 /* ---------- XIN NGHỈ ---------- */
