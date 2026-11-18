@@ -191,7 +191,7 @@
       <h2 id="xinChao">Xin chào</h2>
       <div class="dongho" id="dongHo">--:--:--</div>
       <div class="ngay" id="ngayNay"></div>
-      <p class="phu" style="text-align:center;margin:0">Giờ chấm muộn nhất: <b id="gioMuon">07:15</b></p>
+      <p class="phu" style="text-align:center;margin:0">Giờ chấm muộn nhất: <b id="gioMuon">07:15</b> · chiều <b id="gioMuonChieu">13:40</b></p>
       <div id="dongCapNhat" class="capnhat an"></div>
       <div id="dongViTri" class="an"></div>
       <div id="hopHomNay"></div>
@@ -567,8 +567,8 @@ function capNhatNutCham() {
   var b = buoiChup(), hn = TC.homNay;
   $('nutCham').textContent = b === 'CHIEU' ? '📸 Làm chiều — chụp ảnh chấm công' : '📸 Chụp ảnh & chấm công';
   var g = '';
-  if (b === 'CHIEU' && !hn) g = 'Hôm nay bạn chưa chấm buổi sáng → chấm lúc này tính là <b>chỉ làm buổi chiều</b> (nửa công, không tính đi muộn).';
-  else if (b === 'CHIEU') g = 'Chấm "Làm chiều" để được tính đủ công cả ngày.';
+  if (b === 'CHIEU' && !hn) g = 'Hôm nay bạn chưa chấm buổi sáng → chấm lúc này tính là <b>chỉ làm buổi chiều</b> (nửa công). Vào sau <b>' + esc(TC.gioMuonChieu || '13:40') + '</b> tính muộn.';
+  else if (b === 'CHIEU') g = 'Chấm "Làm chiều" để được tính đủ công cả ngày. Vào sau <b>' + esc(TC.gioMuonChieu || '13:40') + '</b> tính muộn.';
   $('goiYChieu').innerHTML = g; $('goiYChieu').classList.toggle('an', !g);
 }
 
@@ -576,6 +576,7 @@ function veChinh(nen) {
   hien('mhChinh');
   $('doiNguoi').classList.remove('an');
   $('xinChao').textContent = 'Xin chào ' + TC.ten;
+  if (TC.gioMuonChieu) $('gioMuonChieu').textContent = TC.gioMuonChieu;
   if (!nen) { baoLoi('loiCham'); $('trangThai').textContent = ''; $('formXinMuon').classList.add('an'); }
   var hn = TC.homNay, h = '';
   var app = trinhDuyetTrongApp();
@@ -583,11 +584,11 @@ function veChinh(nen) {
   if (TC.nghiHomNay) h += '<div class="hop xanh">📅 Hôm nay bạn có lịch nghỉ <b>' + esc(TC.nghiHomNay.toLowerCase()) + '</b> đã được duyệt.</div>';
   if (TC.xinMuon.daXinHomNay) h += '<div class="hop cam">🙏 Bạn đã xin phép đi muộn hôm nay: ' + esc(TC.xinMuon.daXinHomNay) + '</div>';
   if (hn) {
-    var muon = hn.ketQua === 'MUỘN', d = [];
-    if (hn.chiChieu) d.push('✅ Đã chấm công <b>buổi chiều</b> lúc <b>' + gio5(hn.gio) + '</b> tại ' + esc(hn.coSo) + ' — chỉ làm buổi chiều (không tính muộn)');
+    var muon = hn.ketQua === 'MUỘN' || hn.muonChieu, d = [];
+    if (hn.chiChieu) d.push('✅ Đã chấm công <b>buổi chiều</b> lúc <b>' + gio5(hn.gio) + '</b> tại ' + esc(hn.coSo) + ' — chỉ làm buổi chiều' + (hn.muonChieu ? ' — <b>MUỘN</b>' : ''));
     else d.push('✅ Đã chấm công vào lúc <b>' + gio5(hn.gio) + '</b> tại ' + esc(hn.coSo) + ' — <b>' + esc(hn.ketQua) + '</b>');
     if (hn.gioTrua) d.push('🍱 Nghỉ trưa lúc <b>' + gio5(hn.gioTrua) + '</b>' + (!hn.gioChieu && !hn.gioVe ? ' — chiều quay lại nhớ bấm <b>Làm chiều</b>' : ''));
-    if (hn.gioChieu && !hn.chiChieu) d.push('☀️ Vào làm chiều lúc <b>' + gio5(hn.gioChieu) + '</b>');
+    if (hn.gioChieu && !hn.chiChieu) d.push('☀️ Vào làm chiều lúc <b>' + gio5(hn.gioChieu) + '</b>' + (hn.muonChieu ? ' — <b>MUỘN</b>' : ''));
     if (hn.gioVe) d.push('🏠 Đã bấm ra về lúc <b>' + gio5(hn.gioVe) + '</b>');
     h += '<div class="hop ' + (muon ? 'cam' : 'xl') + '">' + d.join('<br>') + '</div>';
   }
@@ -676,7 +677,7 @@ function veDoiHomNay() {
   if (DHN_CHON === 'cham') {
     var nhanKq = { 'ĐÚNG GIỜ': '<span class="nhan xl">Đúng giờ</span>', 'MUỘN': '<span class="nhan cam">Muộn</span>', 'MUỘN CÓ PHÉP': '<span class="nhan xanh">Muộn có phép</span>', 'CHỈ CHIỀU': '<span class="nhan xl">Chỉ làm chiều</span>' };
     h = ds('✅ Đã chấm công', (d.daChamDs || []).map(function (x) {
-      return '<b>' + esc(x.ten) + '</b> — ' + esc(x.gio) + (x.coSo ? ' · ' + esc(x.coSo) : '') + ' ' + (nhanKq[x.kq] || esc(x.kq)) + (x.trua ? ' · trưa ' + esc(x.trua) : '') + (x.chieu ? ' · chiều ' + esc(x.chieu) : '') + (x.ve ? ' · về ' + esc(x.ve) : '');
+      return '<b>' + esc(x.ten) + '</b> — ' + esc(x.gio) + (x.coSo ? ' · ' + esc(x.coSo) : '') + ' ' + (nhanKq[x.kq] || esc(x.kq)) + (x.trua ? ' · trưa ' + esc(x.trua) : '') + (x.chieu ? ' · chiều ' + esc(x.chieu) : '') + (x.muonChieu ? ' <span class="nhan cam">Muộn chiều</span>' : '') + (x.ve ? ' · về ' + esc(x.ve) : '');
     }), 'xl', 'Chưa có ai chấm công.') +
       ds('⏳ Chưa chấm công', d.chuaCham.map(esc), 'cam', 'Mọi người đã chấm đủ 👍') +
       (d.nghi.length ? ds('📅 Nghỉ có duyệt', d.nghi.map(esc), 'xanh', '') : '');
@@ -780,16 +781,16 @@ function khiChonFile(inp) {
   img.src = URL.createObjectURL(f);
 }
 function thuNho(nguon, w, h, latGuong) {
-  var max = 640, k = Math.min(1, max / Math.max(w, h));
+  var max = 480, k = Math.min(1, max / Math.max(w, h));
   var c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
   var g = c.getContext('2d');
   if (latGuong) { g.translate(c.width, 0); g.scale(-1, 1); }
   g.drawImage(nguon, 0, 0, c.width, c.height);
   g.setTransform(1, 0, 0, 1, 0, 0);
   var t = bayGio().toLocaleString('vi-VN', { hour12: false, timeZone: 'Asia/Ho_Chi_Minh' }) + ' · ' + TC.ten;
-  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, c.height - 34, c.width, 34);
-  g.fillStyle = '#fff'; g.font = 'bold 18px Arial'; g.fillText(t, 10, c.height - 11);
-  return c.toDataURL('image/jpeg', 0.7);
+  g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, c.height - 28, c.width, 28);
+  g.fillStyle = '#fff'; g.font = 'bold 14px Arial'; g.fillText(t, 8, c.height - 9);
+  return c.toDataURL('image/jpeg', 0.65);
 }
 
 function bamChamCong() {
@@ -903,9 +904,14 @@ function batDauGui(anh) {
 function apKetQua(r) {
   var KQ = { DUNG_GIO: 'ĐÚNG GIỜ', MUON: 'MUỘN', MUON_CO_PHEP: 'MUỘN CÓ PHÉP' };
   if (KQ[r.trangThai]) TC.homNay = { gio: r.gio, coSo: r.coSo, ketQua: KQ[r.trangThai], gioVe: '', gioTrua: '', gioChieu: '', chiChieu: false };
-  else if (r.trangThai === 'CHI_CHIEU') TC.homNay = { gio: r.gio, coSo: r.coSo, ketQua: 'CHỈ CHIỀU', gioVe: '', gioTrua: '', gioChieu: r.gio, chiChieu: true };
-  else if (r.trangThai === 'LAM_CHIEU' && TC.homNay) TC.homNay.gioChieu = r.gio;
+  else if (r.trangThai === 'CHI_CHIEU') TC.homNay = { gio: r.gio, coSo: r.coSo, ketQua: 'CHỈ CHIỀU', gioVe: '', gioTrua: '', gioChieu: r.gio, chiChieu: true, muonChieu: !!r.muon };
+  else if (r.trangThai === 'LAM_CHIEU' && TC.homNay) { TC.homNay.gioChieu = r.gio; TC.homNay.muonChieu = !!r.muon; }
   if (r.trangThai !== 'NGOAI_VUNG') capNhatNen();
+}
+
+function loiQuy(r) {
+  return '<div class="quy">Đây là lần thứ <b>' + r.lanMuon + '</b> trong tháng bạn đi muộn, cảm ơn bạn đã đóng góp <b>' + Number(r.tien).toLocaleString('vi-VN') +
+    ' VND</b> vào quỹ <b>' + esc(r.tenQuy) + '</b> - nơi số tiền đi muộn cuối năm sẽ được chuyển cho những bệnh nhân nghèo hoặc bệnh nhân chạy thận nhân tạo ở Nam Định.</div>';
 }
 
 function hienKetQua(r) {
@@ -915,17 +921,18 @@ function hienKetQua(r) {
   if (r.trangThai === 'DUNG_GIO') {
     h = '<div class="icon">✅</div><h2>Chấm công thành công</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>' +
       (r.ghiChu ? esc(r.ghiChu) : 'Đúng giờ. Chúc bạn một ngày làm việc vui vẻ!') + '</p>';
-  } else if (r.trangThai === 'LAM_CHIEU') {
-    h = '<div class="icon">☀️</div><h2>Đã chấm công buổi chiều</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>Hôm nay bạn được tính đủ công cả ngày. Chiều làm việc vui vẻ!</p>';
-  } else if (r.trangThai === 'CHI_CHIEU') {
-    h = '<div class="icon">☀️</div><h2>Đã chấm công — làm buổi chiều</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>Hôm nay tính <b>nửa công</b> (buổi chiều), <b>không tính đi muộn</b>.</p>';
+  } else if (r.trangThai === 'LAM_CHIEU' || r.trangThai === 'CHI_CHIEU') {
+    var chi = r.trangThai === 'CHI_CHIEU';
+    if (r.muon) cls = 'cam';
+    h = '<div class="icon">' + (r.muon ? '⏰' : '☀️') + '</div><h2>Đã chấm công ' + (chi ? '— làm buổi chiều' : 'buổi chiều') + (r.muon ? ' — đi muộn' : '') + '</h2>' +
+      '<p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>' +
+      (chi ? 'Hôm nay tính <b>nửa công</b> (buổi chiều).' : 'Hôm nay bạn được tính đủ công cả ngày.') +
+      (r.muon ? ' Giờ vào chiều muộn nhất: <b>' + esc(r.gioMuonChieu || '') + '</b>.' : ' Chiều làm việc vui vẻ!') + '</p>' + (r.muon ? loiQuy(r) : '');
   } else if (r.trangThai === 'MUON_CO_PHEP') {
     h = '<div class="icon">🙏</div><h2>Đã chấm công — muộn có phép</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b><br>Bạn đã xin phép nên không tính đi muộn.</p>';
   } else if (r.trangThai === 'MUON') {
     cls = 'cam';
-    h = '<div class="icon">⏰</div><h2>Đã chấm công — đi muộn</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b></p>' +
-      '<div class="quy">Đây là lần thứ <b>' + r.lanMuon + '</b> trong tháng bạn đi muộn, cảm ơn bạn đã đóng góp <b>' + Number(r.tien).toLocaleString('vi-VN') +
-      ' VND</b> vào quỹ <b>' + esc(r.tenQuy) + '</b> - nơi số tiền đi muộn cuối năm sẽ được chuyển cho những bệnh nhân nghèo hoặc bệnh nhân chạy thận nhân tạo ở Nam Định.</div>';
+    h = '<div class="icon">⏰</div><h2>Đã chấm công — đi muộn</h2><p>Lúc <b>' + r.gio.slice(0, 5) + '</b> tại <b>' + esc(r.coSo) + '</b></p>' + loiQuy(r);
   } else if (r.trangThai === 'DA_CHAM') {
     h = '<div class="icon">👍</div><h2>Hôm nay bạn đã chấm rồi</h2><p>Lúc <b>' + esc(String(r.gio).slice(0, 5)) + '</b> tại ' + esc(r.coSo) + ' — ' + esc(r.ketQua) +
       (r.gioChieu && r.ketQua !== 'CHỈ CHIỀU' ? '<br>Vào chiều lúc <b>' + esc(String(r.gioChieu).slice(0, 5)) + '</b>' : '') + '</p>';
